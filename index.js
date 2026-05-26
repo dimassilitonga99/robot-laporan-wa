@@ -164,11 +164,15 @@ function buatLaporanHarga(data) {
     msg += `\n📉 *Barang Yang Turun Harga:*\n`;
     data.turun.forEach(b => msg += `• ${b}\n`);
   }
+const catatanTetap = `Nota Semuanya Sudah Diinput Di Sistem, Bisa Langsung Di Print Barcodenya Ya.\n\nMohon Dicek Kembali Fisik Barang Dengan Yang Di Input Disistem, Jika Ada Yang Tidak Sesuai Mohon Di Konfirmasi Lagi. Terima Kasih🙏🏻`;
+
   if (data.note.length > 0) {
     msg += `\n📝 *Catatan:*\n`;
     data.note.forEach(b => msg += `${b}\n`);
+    msg += `\n${catatanTetap}\n`;
+  } else {
+    msg += `\n${catatanTetap}\n`;
   }
-
   msg += `\n_Laporan otomatis_`;
   return msg;
 }
