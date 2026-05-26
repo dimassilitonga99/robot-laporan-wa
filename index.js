@@ -114,36 +114,38 @@ _Laporan otomatis_`;
 }
 
 // ── MENU 2: Laporan Harga Barang ──────────────────────
-function parseDataHarga(text) {
-  const lines = text.trim().split('\n');
-  const data  = { toko: 'nk', baru: [], naik: [], turun: [], note: [] };
-  let mode = null;
+function buatLaporanHarga(data) {
+  const namaToko  = TOKO[data.toko] || TOKO['nk'];
+  const isKemarin = data.kemarin === true;
+  const sapaan    = getSapaan(namaToko);
+  const tgl       = getTanggal(isKemarin);
+  const labelTgl  = isKemarin ? `*${tgl}* _(kemarin)_` : `*${tgl}*`;
 
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    const lower = trimmed.toLowerCase();
+  const catatanTetap = `Nota Semuanya Sudah Diinput Di Sistem, Bisa Langsung Di Print Barcodenya Ya.\n\nMohon Dicek Kembali Fisik Barang Dengan Yang Di Input Disistem, Jika Ada Yang Tidak Sesuai Mohon Di Konfirmasi Lagi. Terima Kasih🙏🏻`;
 
-    // Baris pertama: "harga nk" / "harga tdm" dll
-    if (lower.startsWith('harga ')) {
-      const kode = lower.replace('harga ', '').trim();
-      if (TOKO[kode]) data.toko = kode;
-      continue;
-    }
+  let msg = `${sapaan}\n\n`;
+  msg += `Harga Barang Untuk Hari ${isKemarin ? 'Kemarin' : 'Ini'} ${labelTgl}\n`;
 
-    // Separator section
-    if (lower.includes('---baru---') || lower.includes('-- baru --') || lower === 'baru:' || lower === 'baru') { mode = 'baru'; continue; }
-    if (lower.includes('---naik---') || lower.includes('-- naik --') || lower === 'naik:' || lower === 'naik') { mode = 'naik'; continue; }
-    if (lower.includes('---turun---') || lower.includes('-- turun --') || lower === 'turun:' || lower === 'turun') { mode = 'turun'; continue; }
-    if (lower.includes('---note---') || lower.includes('-- note --') || lower === 'note:' || lower === 'note' || lower === 'catatan:') { mode = 'note'; continue; }
-
-    if (mode && data[mode] !== undefined) {
-      data[mode].push(trimmed);
-    }
+  if (data.baru.length > 0) {
+    msg += `\n🆕 *Barang Yang Baru:*\n`;
+    data.baru.forEach(b => msg += `• ${b}\n`);
   }
-  return data;
-}
+  if (data.naik.length > 0) {
+    msg += `\n📈 *Barang Yang Naik Harga:*\n`;
+    data.naik.forEach(b => msg += `• ${b}\n`);
+  }
+  if (data.turun.length > 0) {
+    msg += `\n📉 *Barang Yang Turun Harga:*\n`;
+    data.turun.forEach(b => msg += `• ${b}\n`);
+  }
+  if (data.note.length > 0) {
+    msg += `\n📝 *Catatan Tambahan:*\n`;
+    data.note.forEach(b => msg += `${b}\n`);
+  }
 
+  msg += `\n${catatanTetap}`;
+  return msg;
+}
 function buatLaporanHarga(data) {
   const namaToko = TOKO[data.toko] || TOKO['nk'];
   const sapaan   = getSapaan(namaToko);
