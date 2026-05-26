@@ -114,6 +114,38 @@ _Laporan otomatis_`;
 }
 
 // ── MENU 2: Laporan Harga Barang ──────────────────────
+function parseDataHarga(text) {
+  const lines = text.trim().split('\n');
+  const data  = { toko: 'nk', kemarin: false, baru: [], naik: [], turun: [], note: [] };
+  let mode = null;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const lower = trimmed.toLowerCase();
+
+    // Baris pertama: "harga nk" dll
+    if (lower.startsWith('harga ')) {
+      const kode = lower.replace('harga ', '').trim();
+      if (TOKO[kode]) data.toko = kode;
+      continue;
+    }
+
+    // Deteksi kemarin
+    if (lower === 'kemarin') { data.kemarin = true; continue; }
+
+    // Separator section
+    if (lower.includes('---baru---')   || lower === 'baru:' || lower === 'baru')   { mode = 'baru';  continue; }
+    if (lower.includes('---naik---')   || lower === 'naik:' || lower === 'naik')   { mode = 'naik';  continue; }
+    if (lower.includes('---turun---')  || lower === 'turun:'|| lower === 'turun')  { mode = 'turun'; continue; }
+    if (lower.includes('---note---')   || lower === 'note:' || lower === 'note' || lower === 'catatan:') { mode = 'note'; continue; }
+
+    if (mode && data[mode] !== undefined) {
+      data[mode].push(trimmed);
+    }
+  }
+  return data;
+}
 function buatLaporanHarga(data) {
   const namaToko  = TOKO[data.toko] || TOKO['nk'];
   const isKemarin = data.kemarin === true;
@@ -144,38 +176,6 @@ function buatLaporanHarga(data) {
   }
 
   msg += `\n${catatanTetap}`;
-  return msg;
-}
-function buatLaporanHarga(data) {
-  const namaToko = TOKO[data.toko] || TOKO['nk'];
-  const sapaan   = getSapaan(namaToko);
-  const tgl      = getTanggal(false);
-
-  let msg = `${sapaan}\n\n`;
-  msg += `Harga Barang Untuk Hari Ini *${tgl}*\n`;
-
-  if (data.baru.length > 0) {
-    msg += `\n🆕 *Barang Yang Baru:*\n`;
-    data.baru.forEach(b => msg += `• ${b}\n`);
-  }
-  if (data.naik.length > 0) {
-    msg += `\n📈 *Barang Yang Naik Harga:*\n`;
-    data.naik.forEach(b => msg += `• ${b}\n`);
-  }
-  if (data.turun.length > 0) {
-    msg += `\n📉 *Barang Yang Turun Harga:*\n`;
-    data.turun.forEach(b => msg += `• ${b}\n`);
-  }
-const catatanTetap = `Nota Semuanya Sudah Diinput Di Sistem, Bisa Langsung Di Print Barcodenya Ya.\n\nMohon Dicek Kembali Fisik Barang Dengan Yang Di Input Disistem, Jika Ada Yang Tidak Sesuai Mohon Di Konfirmasi Lagi. Terima Kasih🙏🏻`;
-
-  if (data.note.length > 0) {
-    msg += `\n📝 *Catatan:*\n`;
-    data.note.forEach(b => msg += `${b}\n`);
-    msg += `\n${catatanTetap}\n`;
-  } else {
-    msg += `\n${catatanTetap}\n`;
-  }
-  msg += `\n_Laporan otomatis_`;
   return msg;
 }
 
