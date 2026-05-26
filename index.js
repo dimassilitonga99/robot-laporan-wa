@@ -277,7 +277,7 @@ _nota 019 (009383/CPK/05/26)_
 *Kode toko (menu 1 & 2):*
 • nk = Nasional Kitchen
 • tdm = Perabot Mama TDM
-• oesapa = Perabot Mama Oesapa
+• osp = Perabot Mama Oesapa
 • kefa = Perabot Mamaku Kefamenanu
 
 Tambah _kemarin_ di baris ke-2 untuk laporan kemarin.`;
