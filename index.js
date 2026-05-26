@@ -10,7 +10,7 @@ const FONNTE_TOKEN = process.env.FONNTE_TOKEN;
 const TOKO = {
   'nk'     : 'Nasional Kitchen',
   'tdm'    : 'Perabot Mama TDM',
-  'oesapa' : 'Perabot Mama Oesapa',
+  'osp' : 'Perabot Mama Oesapa',
   'kefa'   : 'Perabot Mamaku Kefamenanu'
 };
 
@@ -40,7 +40,7 @@ function getSapaan(namaToko) {
   let waktu;
   if      (jam >= 5  && jam < 11) waktu = 'Pagi';
   else if (jam >= 11 && jam < 15) waktu = 'Siang';
-  else if (jam >= 15 && jam < 19) waktu = 'Sore';
+  else if (jam >= 15 && jam < 18) waktu = 'Sore';
   else waktu = 'Malam';
   return `Selamat ${waktu} Team ${namaToko}`;
 }
@@ -95,7 +95,7 @@ function buatLaporanPenjualan(data) {
   if (!kassamsg) kassamsg = '• -\n';
 
   return `━━━━━━━━━━━━━━━━━━
-📊 *LAPORAN PENJUALAN*
+📊 *LAPORAN PENJUALAN HARIAN*
 🏪 *Toko ${namaToko}*
 ━━━━━━━━━━━━━━━━━━
 ${labelTgl}
@@ -298,7 +298,7 @@ app.post('/webhook', async (req, res) => {
     const baris1 = msg.split('\n')[0].trim();
 
     // Panduan
-    if (['halo','hi','hello','help','bantuan','mulai','menu'].includes(msg)) {
+   if (['halo','hi','hello','help','bantuan','mulai','menu','bot','laporan','start','p','info','hallo','halo pantek','tai','we','setan'].includes(msg)) {
       await kirimWA(sender, PANDUAN);
       return;
     }
@@ -327,7 +327,7 @@ app.post('/webhook', async (req, res) => {
     if (adaData) {
       await kirimWA(sender, buatLaporanPenjualan(data));
     } else {
-      await kirimWA(sender, '❓ Format tidak dikenali.\n\nKirim *menu* untuk melihat panduan.');
+      await kirimWA(sender, '❓ Format tidak dikenali lu ketik yang benar bego.\n\nKirim *menu* untuk melihat panduan.');
     }
 
   } catch (e) {
