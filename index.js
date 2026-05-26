@@ -26,14 +26,19 @@ async function kirimWA(target, message) {
 }
 
 function formatRupiah(angka) {
-  return 'Rp ' + parseInt(angka).toLocaleString('id-ID');
+  const n = parseInt(angka) || 0;
+  if (n === 0) return 'Rp. -';
+  return 'Rp. ' + n.toLocaleString('id-ID');
+}
+
+function formatRupiahPlain(angka) {
+  return 'Rp ' + (parseInt(angka) || 0).toLocaleString('id-ID');
 }
 
 function getSapaan(namaToko) {
-  // WIB = UTC+8
   const jam = new Date(Date.now() + 8 * 60 * 60 * 1000).getUTCHours();
   let waktu;
-  if (jam >= 5  && jam < 11) waktu = 'Pagi';
+  if      (jam >= 5  && jam < 11) waktu = 'Pagi';
   else if (jam >= 11 && jam < 15) waktu = 'Siang';
   else if (jam >= 15 && jam < 19) waktu = 'Sore';
   else waktu = 'Malam';
@@ -44,8 +49,7 @@ function getTanggal(isKemarin) {
   const wib = new Date(Date.now() + 8 * 60 * 60 * 1000);
   if (isKemarin) wib.setDate(wib.getDate() - 1);
   return wib.toLocaleDateString('id-ID', {
-    weekday: 'long', year: 'numeric',
-    month: 'long', day: 'numeric'
+    day: 'numeric', month: 'long', year: 'numeric'
   });
 }
 
@@ -85,9 +89,9 @@ function buatLaporanPenjualan(data) {
   const grosir = parseInt(data.grosir || 0);
 
   let kassamsg = '';
-  if (k1) kassamsg += `• Kassa 1 : ${formatRupiah(k1)}\n`;
-  if (k2) kassamsg += `• Kassa 2 : ${formatRupiah(k2)}\n`;
-  if (k3) kassamsg += `• Kassa 3 : ${formatRupiah(k3)}\n`;
+  if (k1) kassamsg += `• Kassa 1 : ${formatRupiahPlain(k1)}\n`;
+  if (k2) kassamsg += `• Kassa 2 : ${formatRupiahPlain(k2)}\n`;
+  if (k3) kassamsg += `• Kassa 3 : ${formatRupiahPlain(k3)}\n`;
   if (!kassamsg) kassamsg = '• -\n';
 
   return `━━━━━━━━━━━━━━━━━━
@@ -99,16 +103,16 @@ ${labelTgl}
 💰 *PENJUALAN PER KASSA*
 ${kassamsg}
 📦 *TOTAL KESELURUHAN*
-${formatRupiah(total)}
+${formatRupiahPlain(total)}
 
 💳 *METODE PEMBAYARAN*
-• Tunai  : ${formatRupiah(tunai)}
-• Debit  : ${formatRupiah(debit)}
-• Kredit : ${formatRupiah(kredit)}
+• Tunai  : ${formatRupiahPlain(tunai)}
+• Debit  : ${formatRupiahPlain(debit)}
+• Kredit : ${formatRupiahPlain(kredit)}
 
 🛒 *JENIS PENJUALAN*
-• Ecer   : ${formatRupiah(ecer)}
-• Grosir : ${formatRupiah(grosir)}
+• Ecer   : ${formatRupiahPlain(ecer)}
+• Grosir : ${formatRupiahPlain(grosir)}
 ━━━━━━━━━━━━━━━━━━
 _Laporan otomatis_`;
 }
@@ -118,77 +122,120 @@ function parseDataHarga(text) {
   const lines = text.trim().split('\n');
   const data  = { toko: 'nk', kemarin: false, baru: [], naik: [], turun: [], note: [] };
   let mode = null;
-
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
     const lower = trimmed.toLowerCase();
-
-    // Baris pertama: "harga nk" dll
     if (lower.startsWith('harga ')) {
       const kode = lower.replace('harga ', '').trim();
       if (TOKO[kode]) data.toko = kode;
       continue;
     }
-
-    // Deteksi kemarin
     if (lower === 'kemarin') { data.kemarin = true; continue; }
-
-    // Separator section
-    if (lower.includes('---baru---')   || lower === 'baru:' || lower === 'baru')   { mode = 'baru';  continue; }
-    if (lower.includes('---naik---')   || lower === 'naik:' || lower === 'naik')   { mode = 'naik';  continue; }
-    if (lower.includes('---turun---')  || lower === 'turun:'|| lower === 'turun')  { mode = 'turun'; continue; }
-    if (lower.includes('---note---')   || lower === 'note:' || lower === 'note' || lower === 'catatan:') { mode = 'note'; continue; }
-
-    if (mode && data[mode] !== undefined) {
-      data[mode].push(trimmed);
-    }
+    if (lower.includes('---baru---')  || lower === 'baru:'  || lower === 'baru')  { mode = 'baru';  continue; }
+    if (lower.includes('---naik---')  || lower === 'naik:'  || lower === 'naik')  { mode = 'naik';  continue; }
+    if (lower.includes('---turun---') || lower === 'turun:' || lower === 'turun') { mode = 'turun'; continue; }
+    if (lower.includes('---note---')  || lower === 'note:'  || lower === 'note' || lower === 'catatan:') { mode = 'note'; continue; }
+    if (mode && data[mode] !== undefined) data[mode].push(trimmed);
   }
   return data;
 }
+
 function buatLaporanHarga(data) {
   const namaToko  = TOKO[data.toko] || TOKO['nk'];
   const isKemarin = data.kemarin === true;
   const sapaan    = getSapaan(namaToko);
   const tgl       = getTanggal(isKemarin);
   const labelTgl  = isKemarin ? `*${tgl}* _(kemarin)_` : `*${tgl}*`;
-
   const catatanTetap = `Nota Semuanya Sudah Diinput Di Sistem, Bisa Langsung Di Print Barcodenya Ya.\n\nMohon Dicek Kembali Fisik Barang Dengan Yang Di Input Disistem, Jika Ada Yang Tidak Sesuai Mohon Di Konfirmasi Lagi. Terima Kasih🙏🏻`;
 
   let msg = `${sapaan}\n\n`;
   msg += `Harga Barang Untuk Hari ${isKemarin ? 'Kemarin' : 'Ini'} ${labelTgl}\n`;
-
-  if (data.baru.length > 0) {
-    msg += `\n🆕 *Barang Yang Baru:*\n`;
-    data.baru.forEach(b => msg += `• ${b}\n`);
-  }
-  if (data.naik.length > 0) {
-    msg += `\n📈 *Barang Yang Naik Harga:*\n`;
-    data.naik.forEach(b => msg += `• ${b}\n`);
-  }
-  if (data.turun.length > 0) {
-    msg += `\n📉 *Barang Yang Turun Harga:*\n`;
-    data.turun.forEach(b => msg += `• ${b}\n`);
-  }
-  if (data.note.length > 0) {
-    msg += `\n📝 *Catatan Tambahan:*\n`;
-    data.note.forEach(b => msg += `${b}\n`);
-  }
-
+  if (data.baru.length > 0)  { msg += `\n🆕 *Barang Yang Baru:*\n`;         data.baru.forEach(b  => msg += `• ${b}\n`); }
+  if (data.naik.length > 0)  { msg += `\n📈 *Barang Yang Naik Harga:*\n`;   data.naik.forEach(b  => msg += `• ${b}\n`); }
+  if (data.turun.length > 0) { msg += `\n📉 *Barang Yang Turun Harga:*\n`;  data.turun.forEach(b => msg += `• ${b}\n`); }
+  if (data.note.length > 0)  { msg += `\n📝 *Catatan Tambahan:*\n`;         data.note.forEach(b  => msg += `${b}\n`); }
   msg += `\n${catatanTetap}`;
   return msg;
 }
 
+// ── MENU 3: Laporan Marketplace ───────────────────────
+function parseDataMarket(text) {
+  const data = {
+    kemarin: false,
+    oesapa: 0, tdm: 0, central: 0,
+    wa: 0, shopee: 0, tiktok: 0, tokopedia: 0,
+    tunai: 0, debit: 0, kredit: 0,
+    nota: []
+  };
+  const lines = text.trim().toLowerCase().split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed === 'market') continue;
+    if (trimmed === 'kemarin') { data.kemarin = true; continue; }
+    // nota bisa punya spasi, ambil setelah kata "nota "
+    if (trimmed.startsWith('nota ')) {
+      data.nota.push(line.trim().substring(5));
+      continue;
+    }
+    const parts = trimmed.split(/\s+/);
+    if (parts.length >= 2) {
+      const key = parts[0];
+      const val = parseInt(parts.slice(1).join('').replace(/[^0-9]/g, '')) || 0;
+      if (key in data) data[key] = val;
+    }
+  }
+  return data;
+}
+
+function buatLaporanMarket(data) {
+  const isKemarin = data.kemarin === true;
+  const tgl       = getTanggal(isKemarin);
+  const labelTgl  = isKemarin ? `${tgl} _(kemarin)_` : tgl;
+
+  const totalToko   = data.oesapa + data.tdm + data.central;
+  const totalChannel = data.wa + data.shopee + data.tiktok + data.tokopedia;
+  const totalBayar  = data.tunai + data.debit + data.kredit;
+
+  let notaMsg = '';
+  if (data.nota.length > 0) {
+    notaMsg = '\n';
+    data.nota.forEach(n => notaMsg += `- Nomor Nota ${n}\n`);
+  }
+
+  return `━━━━━━━━━━━━━━━━━━━━━━
+🛍️ *Total Penjualan Marketplace*
+*Perabot Mama*
+📅 Periode ${labelTgl}
+━━━━━━━━━━━━━━━━━━━━━━
+🏪 *Per Toko*
+• Toko Perabot Mama Oesapa : ${formatRupiah(data.oesapa)}
+• Toko Perabot Mama TDM    : ${formatRupiah(data.tdm)}
+• Toko Central Perabot     : ${formatRupiah(data.central)}
+──────────────────────
+💰 *Total* : ${formatRupiah(totalToko)}
+
+📱 *Per Channel Penjualan*
+• Penjualan via WA       : ${formatRupiah(data.wa)}
+• Penjualan via Shopee   : ${formatRupiah(data.shopee)}
+• Penjualan via Tiktok   : ${formatRupiah(data.tiktok)}
+• Penjualan via Tokopedia: ${formatRupiah(data.tokopedia)}
+──────────────────────
+💰 *Total Penjualan* : ${formatRupiah(totalChannel)}
+
+💳 *Metode Pembayaran*
+• Tunai/CASH  : ${formatRupiah(data.tunai)}
+• Debit/TF    : ${formatRupiah(data.debit)}
+• Credit      : ${formatRupiah(data.kredit)}
+━━━━━━━━━━━━━━━━━━━━━━${notaMsg}_Laporan otomatis_`;
+}
+
 // ── PANDUAN ────────────────────────────────────────────
 const PANDUAN = `🤖 *Bot Laporan Toko*
-
-Pilih menu yang diinginkan:
+Ada 3 menu tersedia:
 
 ━━━━━━━━━━━━━━━━━━
 📊 *MENU 1 — Laporan Penjualan*
-Ketik kode toko + data angka:
-\`nk / tdm / oesapa / kefa\`
-
 Contoh:
 _nk_
 _k1 29812000_
@@ -199,29 +246,41 @@ _kredit 318000_
 _ecer 23298000_
 _grosir 17601000_
 
-Tambah baris _kemarin_ untuk laporan kemarin.
-
 ━━━━━━━━━━━━━━━━━━
 🏷️ *MENU 2 — Laporan Harga Barang*
-Ketik \`harga [kode toko]\` di baris 1:
-
 Contoh:
 _harga nk_
 _---baru---_
-_Nama barang baru_
+_Nama barang_
 _---naik---_
-_Nama barang naik_
+_Nama barang_
 _---turun---_
-_Nama barang turun_
-_---note---_
-_Catatan tambahan_
+_Nama barang_
 
 ━━━━━━━━━━━━━━━━━━
-*Kode toko:*
+🛍️ *MENU 3 — Laporan Marketplace*
+Contoh:
+_market_
+_oesapa 0_
+_tdm 0_
+_central 21061000_
+_wa 21061000_
+_shopee 0_
+_tiktok 0_
+_tokopedia 0_
+_tunai 304000_
+_debit 20757000_
+_kredit 0_
+_nota 019 (009383/CPK/05/26)_
+
+━━━━━━━━━━━━━━━━━━
+*Kode toko (menu 1 & 2):*
 • nk = Nasional Kitchen
 • tdm = Perabot Mama TDM
 • oesapa = Perabot Mama Oesapa
-• kefa = Perabot Mamaku Kefamenanu`;
+• kefa = Perabot Mamaku Kefamenanu
+
+Tambah _kemarin_ di baris ke-2 untuk laporan kemarin.`;
 
 // ── WEBHOOK ────────────────────────────────────────────
 app.get('/', (_, res) => res.send('Bot laporan aktif ✅'));
@@ -235,9 +294,8 @@ app.post('/webhook', async (req, res) => {
     const message = body.message || body.text || body.msg || '';
     if (!sender || !message) return;
 
-    const msg   = message.trim().toLowerCase();
-    const lines = message.trim().toLowerCase().split('\n');
-    const baris1 = lines[0].trim();
+    const msg    = message.trim().toLowerCase();
+    const baris1 = msg.split('\n')[0].trim();
 
     // Panduan
     if (['halo','hi','hello','help','bantuan','mulai','menu'].includes(msg)) {
@@ -245,7 +303,15 @@ app.post('/webhook', async (req, res) => {
       return;
     }
 
-    // Menu 2: Laporan Harga
+    // Menu 3: Marketplace
+    if (baris1 === 'market') {
+      const data    = parseDataMarket(message);
+      const laporan = buatLaporanMarket(data);
+      await kirimWA(sender, laporan);
+      return;
+    }
+
+    // Menu 2: Harga Barang
     if (baris1.startsWith('harga')) {
       const data    = parseDataHarga(message);
       const laporan = buatLaporanHarga(data);
@@ -258,12 +324,10 @@ app.post('/webhook', async (req, res) => {
     const adaData = data.k1 || data.k2 || data.k3 ||
                     data.tunai || data.debit || data.kredit ||
                     data.ecer  || data.grosir;
-
     if (adaData) {
-      const laporan = buatLaporanPenjualan(data);
-      await kirimWA(sender, laporan);
+      await kirimWA(sender, buatLaporanPenjualan(data));
     } else {
-      await kirimWA(sender, '❓ Format tidak dikenali.\n\nKirim *halo* atau *menu* untuk melihat panduan.');
+      await kirimWA(sender, '❓ Format tidak dikenali.\n\nKirim *menu* untuk melihat panduan.');
     }
 
   } catch (e) {
