@@ -80,4 +80,5 @@ Jika ada data yang tidak terbaca, tulis "tidak terbaca". Jangan tambahkan teks l
 });
 
 app.get('/', (_, res) => res.send('Bot laporan aktif ✅'));
+app.get('/webhook', (_, res) => res.send('Webhook aktif ✅'));
 app.listen(process.env.PORT || 3000, () => console.log('🤖 Bot aktif!'));
