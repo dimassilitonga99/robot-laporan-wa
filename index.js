@@ -23,9 +23,18 @@ function formatRupiah(angka) {
 }
 
 function buatLaporan(data) {
-  const tgl = new Date().toLocaleDateString('id-ID', {
+  // Cek apakah laporan untuk kemarin
+  const isKemarin = data.kemarin === true;
+
+  const now = new Date();
+  // Tambah offset WIB (UTC+8)
+  const wib = new Date(now.getTime() + (8 * 60 * 60 * 1000));
+  if (isKemarin) wib.setDate(wib.getDate() - 1);
+
+  const tgl = wib.toLocaleDateString('id-ID', {
     weekday: 'long', year: 'numeric',
-    month: 'long', day: 'numeric'
+    month: 'long', day: 'numeric',
+    timeZone: 'Asia/Makassar'
   });
 
   const k1     = parseInt(data.k1 || 0);
@@ -43,11 +52,13 @@ function buatLaporan(data) {
   if (k2) kassamsg += `• Kassa 2 : ${formatRupiah(k2)}\n`;
   if (k3) kassamsg += `• Kassa 3 : ${formatRupiah(k3)}\n`;
 
+  const labelTgl = isKemarin ? `📅 *${tgl}* _(kemarin)_` : `📅 *${tgl}*`;
+
   return `━━━━━━━━━━━━━━━━━━
 📊 *LAPORAN PENJUALAN*
 🏪 *Toko Nasional Kitchen*
 ━━━━━━━━━━━━━━━━━━
-📅 *${tgl}*
+${labelTgl}
 
 💰 *PENJUALAN PER KASSA*
 ${kassamsg}
@@ -65,12 +76,17 @@ ${formatRupiah(total)}
 ━━━━━━━━━━━━━━━━━━
 _Laporan otomatis_`;
 }
-
 function parseData(text) {
   const data = {};
   const lines = text.trim().toLowerCase().split('\n');
   for (const line of lines) {
-    const parts = line.trim().split(/\s+/);
+    const trimmed = line.trim();
+    // Deteksi kata "kemarin" di baris mana saja
+    if (trimmed === 'kemarin') {
+      data.kemarin = true;
+      continue;
+    }
+    const parts = trimmed.split(/\s+/);
     if (parts.length >= 2) {
       const key = parts[0];
       const val = parts[1].replace(/[^0-9]/g, '');
