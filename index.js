@@ -5,9 +5,7 @@ const app     = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-const GEMINI_KEY   = process.env.GEMINI_KEY;
 const FONNTE_TOKEN = process.env.FONNTE_TOKEN;
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`;
 
 async function kirimWA(target, message) {
   try {
@@ -15,114 +13,130 @@ async function kirimWA(target, message) {
       { target, message },
       { headers: { Authorization: FONNTE_TOKEN } }
     );
-    console.log('Pesan terkirim ke:', target);
   } catch (e) {
     console.error('Gagal kirim WA:', e?.response?.data || e.message);
   }
 }
 
+function formatRupiah(angka) {
+  return 'Rp ' + parseInt(angka).toLocaleString('id-ID');
+}
+
+function buatLaporan(data) {
+  const tgl = new Date().toLocaleDateString('id-ID', {
+    weekday: 'long', year: 'numeric',
+    month: 'long', day: 'numeric'
+  });
+
+  const k1     = parseInt(data.k1 || 0);
+  const k2     = parseInt(data.k2 || 0);
+  const k3     = parseInt(data.k3 || 0);
+  const total  = k1 + k2 + k3;
+  const tunai  = parseInt(data.tunai  || 0);
+  const debit  = parseInt(data.debit  || 0);
+  const kredit = parseInt(data.kredit || 0);
+  const ecer   = parseInt(data.ecer   || 0);
+  const grosir = parseInt(data.grosir || 0);
+
+  let kassamsg = '';
+  if (k1) kassamsg += `• Kassa 1 : ${formatRupiah(k1)}\n`;
+  if (k2) kassamsg += `• Kassa 2 : ${formatRupiah(k2)}\n`;
+  if (k3) kassamsg += `• Kassa 3 : ${formatRupiah(k3)}\n`;
+
+  return `━━━━━━━━━━━━━━━━━━
+📊 *LAPORAN PENJUALAN*
+🏪 *Toko Nasional Kitchen*
+━━━━━━━━━━━━━━━━━━
+📅 *${tgl}*
+
+💰 *PENJUALAN PER KASSA*
+${kassamsg}
+📦 *TOTAL KESELURUHAN*
+${formatRupiah(total)}
+
+💳 *METODE PEMBAYARAN*
+• Tunai  : ${formatRupiah(tunai)}
+• Debit  : ${formatRupiah(debit)}
+• Kredit : ${formatRupiah(kredit)}
+
+🛒 *JENIS PENJUALAN*
+• Ecer   : ${formatRupiah(ecer)}
+• Grosir : ${formatRupiah(grosir)}
+━━━━━━━━━━━━━━━━━━
+_Laporan otomatis_`;
+}
+
+function parseData(text) {
+  const data = {};
+  const lines = text.trim().toLowerCase().split('\n');
+  for (const line of lines) {
+    const parts = line.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      const key = parts[0];
+      const val = parts[1].replace(/[^0-9]/g, '');
+      if (val) data[key] = val;
+    }
+  }
+  return data;
+}
+
+const PANDUAN = `📋 *Cara pakai bot laporan:*
+
+Ketik dan kirim data seperti ini:
+
+\`\`\`
+k1 29812000
+k2 11087000
+tunai 26326500
+debit 14254500
+kredit 318000
+ecer 23298000
+grosir 17601000
+\`\`\`
+
+*Keterangan:*
+• k1, k2, k3 = kassa 1, 2, 3
+• tunai, debit, kredit = metode bayar
+• ecer, grosir = jenis penjualan
+
+Kirim angka tanpa titik/koma.
+Bot langsung buatkan laporan! 🚀`;
+
 app.get('/', (_, res) => res.send('Bot laporan aktif ✅'));
 app.get('/webhook', (_, res) => res.send('Webhook aktif ✅'));
 
 app.post('/webhook', async (req, res) => {
-  // Langsung balas 200 supaya Fonnte tidak timeout
   res.sendStatus(200);
-
   try {
-    console.log('Data masuk dari Fonnte:', JSON.stringify(req.body));
+    const body   = req.body || {};
+    const sender  = body.sender || body.from || body.phone || null;
+    const message = body.message || body.text || body.msg || '';
 
-    // Fonnte bisa kirim berbagai format — tangani semua
-    const body = req.body || {};
-    
-    // Ambil nomor pengirim dari berbagai kemungkinan field
-    const sender = body.sender || body.from || body.phone || 
-                   body.participant || body.data?.sender || null;
-    
-    // Ambil pesan teks
-    const message = body.message || body.text || body.msg || 
-                    body.data?.message || '';
-    
-    // Ambil URL gambar/foto
-    const image = body.image || body.file || body.media || 
-                  body.data?.image || body.url || '';
+    if (!sender || !message) return;
 
-    console.log('Sender:', sender, '| Pesan:', message, '| Gambar:', image ? 'ada' : 'tidak ada');
+    const msg = message.trim().toLowerCase();
 
-    if (!sender) {
-      console.log('Tidak ada sender, skip.');
+    // Panduan
+    if (msg === 'halo' || msg === 'hi' || msg === 'hello' || msg === 'help' || msg === 'bantuan') {
+      await kirimWA(sender, PANDUAN);
       return;
     }
 
-    let parts = [];
+    // Cek apakah pesan berisi data laporan
+    const data = parseData(message);
+    const adaData = data.k1 || data.k2 || data.k3 ||
+                    data.tunai || data.debit || data.kredit ||
+                    data.ecer || data.grosir;
 
-    if (image && image.length > 0) {
-      // Ada foto — baca dengan Gemini
-      console.log('Memproses foto dari:', image);
-      const imgResp = await axios.get(image, { 
-        responseType: 'arraybuffer',
-        timeout: 15000
-      });
-      const b64  = Buffer.from(imgResp.data).toString('base64');
-      const mime = imgResp.headers['content-type'] || 'image/jpeg';
-      parts = [
-        { inline_data: { mime_type: mime, data: b64 } },
-        { text: `Kamu adalah asisten laporan toko. Baca semua data penjualan dari gambar ini dengan teliti. Lalu susun laporan WhatsApp yang rapi dengan format berikut:
-
-━━━━━━━━━━━━━━━━━━
-📊 *LAPORAN PENJUALAN*
-━━━━━━━━━━━━━━━━━━
-🏪 *Toko:* [nama toko]
-📅 *Tanggal:* [tanggal]
-
-💰 *PENJUALAN PER KASSA*
-• Kassa 1: Rp [jumlah]
-• Kassa 2: Rp [jumlah]
-
-📦 *TOTAL KESELURUHAN*
-Rp [total]
-
-💳 *METODE BAYAR*
-• Tunai: Rp [jumlah]
-• Debit: Rp [jumlah]
-• Kredit: Rp [jumlah]
-
-🛒 *JENIS PENJUALAN*
-• Ecer: Rp [jumlah]
-• Grosir: Rp [jumlah]
-━━━━━━━━━━━━━━━━━━
-_Laporan otomatis_
-
-Jika ada data yang tidak terbaca, tulis "tidak terbaca". Jangan tambahkan teks lain di luar format.` }
-      ];
-    } else if (message && message.trim().length > 0) {
-      // Pesan teks biasa
-      const msg = message.toLowerCase().trim();
-      if (msg === 'halo' || msg === 'hi' || msg === 'hello') {
-        await kirimWA(sender, '👋 Halo! Kirim foto struk/laporan kasir kamu, saya akan buatkan laporannya otomatis dalam hitungan detik! 📊');
-        return;
-      }
-      parts = [{ text: `Kamu adalah asisten laporan toko. Pengguna mengirim: "${message}". Balas singkat dan minta mereka kirim foto struk kasir.` }];
+    if (adaData) {
+      const laporan = buatLaporan(data);
+      await kirimWA(sender, laporan);
     } else {
-      console.log('Tidak ada pesan atau gambar, skip.');
-      return;
+      await kirimWA(sender, '❓ Format tidak dikenali.\n\nKirim *halo* untuk melihat panduan cara pakai.');
     }
-
-    // Kirim ke Gemini
-    const aiResp = await axios.post(GEMINI_URL, {
-      contents: [{ parts }]
-    }, { timeout: 30000 });
-
-    const reply = aiResp.data.candidates?.[0]?.content?.parts?.[0]?.text
-      || 'Maaf, tidak dapat membaca. Coba kirim ulang foto yang lebih terang.';
-    
-    await kirimWA(sender, reply);
 
   } catch (e) {
-    console.error('Error proses webhook:', e?.response?.data || e.message);
-    const sender = req.body?.sender || req.body?.from || req.body?.phone || null;
-    if (sender) {
-      await kirimWA(sender, '❌ Gagal memproses. Coba kirim ulang foto yang lebih terang.');
-    }
+    console.error('Error:', e.message);
   }
 });
 
