@@ -8,10 +8,10 @@ app.use(express.urlencoded({ extended: true }));
 const FONNTE_TOKEN = process.env.FONNTE_TOKEN;
 
 const TOKO = {
-  'nk'     : 'Toko Nasional Kitchen',
-  'tdm'    : 'Toko Perabot Mama TDM',
-  'oesapa' : 'Toko Perabot Mama Oesapa',
-  'kefa'   : 'Toko Perabot Mamaku Kefamenanu'
+  'nk'     : 'Nasional Kitchen',
+  'tdm'    : 'Perabot Mama TDM',
+  'oesapa' : 'Perabot Mama Oesapa',
+  'kefa'   : 'Perabot Mamaku Kefamenanu'
 };
 
 async function kirimWA(target, message) {
@@ -29,9 +29,19 @@ function formatRupiah(angka) {
   return 'Rp ' + parseInt(angka).toLocaleString('id-ID');
 }
 
+function getSapaan(namaToko) {
+  // WIB = UTC+8
+  const jam = new Date(Date.now() + 8 * 60 * 60 * 1000).getUTCHours();
+  let waktu;
+  if (jam >= 5  && jam < 11) waktu = 'Pagi';
+  else if (jam >= 11 && jam < 15) waktu = 'Siang';
+  else if (jam >= 15 && jam < 19) waktu = 'Sore';
+  else waktu = 'Malam';
+  return `Selamat ${waktu} Team ${namaToko}`;
+}
+
 function getTanggal(isKemarin) {
-  const now = new Date();
-  const wib = new Date(now.getTime() + (8 * 60 * 60 * 1000));
+  const wib = new Date(Date.now() + 8 * 60 * 60 * 1000);
   if (isKemarin) wib.setDate(wib.getDate() - 1);
   return wib.toLocaleDateString('id-ID', {
     weekday: 'long', year: 'numeric',
@@ -39,14 +49,34 @@ function getTanggal(isKemarin) {
   });
 }
 
-function buatLaporan(data, namaToko) {
+// ── MENU 1: Laporan Penjualan ──────────────────────────
+function parseDataPenjualan(text) {
+  const data = {};
+  const lines = text.trim().toLowerCase().split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (trimmed === 'kemarin') { data.kemarin = true; continue; }
+    if (TOKO[trimmed]) { data.toko = trimmed; continue; }
+    const parts = trimmed.split(/\s+/);
+    if (parts.length >= 2) {
+      const val = parts[1].replace(/[^0-9]/g, '');
+      if (val) data[parts[0]] = val;
+    }
+  }
+  return data;
+}
+
+function buatLaporanPenjualan(data) {
   const isKemarin = data.kemarin === true;
   const tgl       = getTanggal(isKemarin);
   const labelTgl  = isKemarin ? `📅 *${tgl}* _(kemarin)_` : `📅 *${tgl}*`;
+  const kodeToko  = data.toko || 'nk';
+  const namaToko  = TOKO[kodeToko] || TOKO['nk'];
 
-  const k1     = parseInt(data.k1 || 0);
-  const k2     = parseInt(data.k2 || 0);
-  const k3     = parseInt(data.k3 || 0);
+  const k1 = parseInt(data.k1 || 0);
+  const k2 = parseInt(data.k2 || 0);
+  const k3 = parseInt(data.k3 || 0);
   const total  = k1 + k2 + k3;
   const tunai  = parseInt(data.tunai  || 0);
   const debit  = parseInt(data.debit  || 0);
@@ -62,7 +92,7 @@ function buatLaporan(data, namaToko) {
 
   return `━━━━━━━━━━━━━━━━━━
 📊 *LAPORAN PENJUALAN*
-🏪 *${namaToko}*
+🏪 *Toko ${namaToko}*
 ━━━━━━━━━━━━━━━━━━
 ${labelTgl}
 
@@ -83,53 +113,111 @@ ${formatRupiah(total)}
 _Laporan otomatis_`;
 }
 
-function parseData(text) {
-  const data = {};
-  const lines = text.trim().toLowerCase().split('\n');
+// ── MENU 2: Laporan Harga Barang ──────────────────────
+function parseDataHarga(text) {
+  const lines = text.trim().split('\n');
+  const data  = { toko: 'nk', baru: [], naik: [], turun: [], note: [] };
+  let mode = null;
+
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    if (trimmed === 'kemarin') { data.kemarin = true; continue; }
-    if (TOKO[trimmed]) { data.toko = trimmed; continue; }
-    const parts = trimmed.split(/\s+/);
-    if (parts.length >= 2) {
-      const key = parts[0];
-      const val = parts[1].replace(/[^0-9]/g, '');
-      if (val) data[key] = val;
+    const lower = trimmed.toLowerCase();
+
+    // Baris pertama: "harga nk" / "harga tdm" dll
+    if (lower.startsWith('harga ')) {
+      const kode = lower.replace('harga ', '').trim();
+      if (TOKO[kode]) data.toko = kode;
+      continue;
+    }
+
+    // Separator section
+    if (lower.includes('---baru---') || lower.includes('-- baru --') || lower === 'baru:' || lower === 'baru') { mode = 'baru'; continue; }
+    if (lower.includes('---naik---') || lower.includes('-- naik --') || lower === 'naik:' || lower === 'naik') { mode = 'naik'; continue; }
+    if (lower.includes('---turun---') || lower.includes('-- turun --') || lower === 'turun:' || lower === 'turun') { mode = 'turun'; continue; }
+    if (lower.includes('---note---') || lower.includes('-- note --') || lower === 'note:' || lower === 'note' || lower === 'catatan:') { mode = 'note'; continue; }
+
+    if (mode && data[mode] !== undefined) {
+      data[mode].push(trimmed);
     }
   }
   return data;
 }
 
-const PANDUAN = `📋 *Cara pakai bot laporan:*
+function buatLaporanHarga(data) {
+  const namaToko = TOKO[data.toko] || TOKO['nk'];
+  const sapaan   = getSapaan(namaToko);
+  const tgl      = getTanggal(false);
 
-Baris 1: *kode toko*
-Baris 2: ketik *kemarin* (opsional)
-Baris berikutnya: data angka
+  let msg = `${sapaan}\n\n`;
+  msg += `Harga Barang Untuk Hari Ini *${tgl}*\n`;
 
+  if (data.baru.length > 0) {
+    msg += `\n🆕 *Barang Yang Baru:*\n`;
+    data.baru.forEach(b => msg += `• ${b}\n`);
+  }
+  if (data.naik.length > 0) {
+    msg += `\n📈 *Barang Yang Naik Harga:*\n`;
+    data.naik.forEach(b => msg += `• ${b}\n`);
+  }
+  if (data.turun.length > 0) {
+    msg += `\n📉 *Barang Yang Turun Harga:*\n`;
+    data.turun.forEach(b => msg += `• ${b}\n`);
+  }
+  if (data.note.length > 0) {
+    msg += `\n📝 *Catatan:*\n`;
+    data.note.forEach(b => msg += `${b}\n`);
+  }
+
+  msg += `\n_Laporan otomatis_`;
+  return msg;
+}
+
+// ── PANDUAN ────────────────────────────────────────────
+const PANDUAN = `🤖 *Bot Laporan Toko*
+
+Pilih menu yang diinginkan:
+
+━━━━━━━━━━━━━━━━━━
+📊 *MENU 1 — Laporan Penjualan*
+Ketik kode toko + data angka:
+\`nk / tdm / oesapa / kefa\`
+
+Contoh:
+_nk_
+_k1 29812000_
+_k2 11087000_
+_tunai 26326500_
+_debit 14254500_
+_kredit 318000_
+_ecer 23298000_
+_grosir 17601000_
+
+Tambah baris _kemarin_ untuk laporan kemarin.
+
+━━━━━━━━━━━━━━━━━━
+🏷️ *MENU 2 — Laporan Harga Barang*
+Ketik \`harga [kode toko]\` di baris 1:
+
+Contoh:
+_harga nk_
+_---baru---_
+_Nama barang baru_
+_---naik---_
+_Nama barang naik_
+_---turun---_
+_Nama barang turun_
+_---note---_
+_Catatan tambahan_
+
+━━━━━━━━━━━━━━━━━━
 *Kode toko:*
 • nk = Nasional Kitchen
 • tdm = Perabot Mama TDM
 • oesapa = Perabot Mama Oesapa
-• kefa = Perabot Mamaku Kefamenanu
+• kefa = Perabot Mamaku Kefamenanu`;
 
-*Contoh:*
-\`\`\`
-nk
-k1 29812000
-k2 11087000
-tunai 26326500
-debit 14254500
-kredit 318000
-ecer 23298000
-grosir 17601000
-\`\`\`
-
-*Field tersedia:*
-k1 k2 k3 = kassa
-tunai debit kredit = metode bayar
-ecer grosir = jenis penjualan`;
-
+// ── WEBHOOK ────────────────────────────────────────────
 app.get('/', (_, res) => res.send('Bot laporan aktif ✅'));
 app.get('/webhook', (_, res) => res.send('Webhook aktif ✅'));
 
@@ -141,29 +229,36 @@ app.post('/webhook', async (req, res) => {
     const message = body.message || body.text || body.msg || '';
     if (!sender || !message) return;
 
-    const msg = message.trim().toLowerCase();
+    const msg   = message.trim().toLowerCase();
+    const lines = message.trim().toLowerCase().split('\n');
+    const baris1 = lines[0].trim();
 
-    if (['halo','hi','hello','help','bantuan','mulai'].includes(msg)) {
+    // Panduan
+    if (['halo','hi','hello','help','bantuan','mulai','menu'].includes(msg)) {
       await kirimWA(sender, PANDUAN);
       return;
     }
 
-    const data = parseData(message);
-    const adaData = data.k1 || data.k2 || data.k3 ||
-                    data.tunai || data.debit || data.kredit ||
-                    data.ecer || data.grosir;
-
-    if (!adaData) {
-      await kirimWA(sender, '❓ Format tidak dikenali.\n\nKirim *halo* untuk melihat panduan.');
+    // Menu 2: Laporan Harga
+    if (baris1.startsWith('harga')) {
+      const data    = parseDataHarga(message);
+      const laporan = buatLaporanHarga(data);
+      await kirimWA(sender, laporan);
       return;
     }
 
-    // Tentukan nama toko
-    const kodeToko = data.toko || 'nk';
-    const namaToko = TOKO[kodeToko] || TOKO['nk'];
+    // Menu 1: Laporan Penjualan
+    const data    = parseDataPenjualan(message);
+    const adaData = data.k1 || data.k2 || data.k3 ||
+                    data.tunai || data.debit || data.kredit ||
+                    data.ecer  || data.grosir;
 
-    const laporan = buatLaporan(data, namaToko);
-    await kirimWA(sender, laporan);
+    if (adaData) {
+      const laporan = buatLaporanPenjualan(data);
+      await kirimWA(sender, laporan);
+    } else {
+      await kirimWA(sender, '❓ Format tidak dikenali.\n\nKirim *halo* atau *menu* untuk melihat panduan.');
+    }
 
   } catch (e) {
     console.error('Error:', e.message);
