@@ -6,9 +6,9 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 const FONNTE_TOKEN = process.env.FONNTE_TOKEN;
+const GEMINI_KEY   = process.env.GEMINI_KEY;
+const GEMINI_URL   = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`;
 
-// State sesi per nomor pengirim
-// { menu, toko, kemarin }
 const sesi = {};
 
 const TOKO_LIST = [
@@ -17,7 +17,6 @@ const TOKO_LIST = [
   { kode: 'oesapa', nama: 'Perabot Mama Oesapa' },
   { kode: 'kefa',   nama: 'Perabot Mamaku Kefamenanu' }
 ];
-
 const TOKO = {};
 TOKO_LIST.forEach(t => TOKO[t.kode] = t.nama);
 
@@ -27,33 +26,137 @@ async function kirimWA(target, message) {
       { target, message },
       { headers: { Authorization: FONNTE_TOKEN } }
     );
-  } catch (e) {
-    console.error('Gagal kirim:', e?.response?.data || e.message);
-  }
+  } catch (e) { console.error('Gagal kirim:', e?.response?.data || e.message); }
 }
 
 function formatRupiah(angka) {
-  const n = parseInt(angka) || 0;
-  return n === 0 ? 'Rp. -' : 'Rp. ' + n.toLocaleString('id-ID');
+  const n = parseInt(angka)||0;
+  return n===0 ? 'Rp. -' : 'Rp. '+n.toLocaleString('id-ID');
 }
-
 function formatRupiahPlain(angka) {
-  return 'Rp ' + (parseInt(angka)||0).toLocaleString('id-ID');
+  return 'Rp '+(parseInt(angka)||0).toLocaleString('id-ID');
 }
-
 function getSapaan(namaToko) {
-  const jam = new Date(Date.now() + 8*60*60*1000).getUTCHours();
-  let w = jam>=5&&jam<11?'Pagi':jam>=11&&jam<15?'Siang':jam>=15&&jam<19?'Sore':'Malam';
+  const jam = new Date(Date.now()+8*60*60*1000).getUTCHours();
+  const w = jam>=5&&jam<11?'Pagi':jam>=11&&jam<15?'Siang':jam>=15&&jam<19?'Sore':'Malam';
   return `Selamat ${w} Team ${namaToko}`;
 }
-
 function getTanggal(isKemarin) {
-  const wib = new Date(Date.now() + 8*60*60*1000);
+  const wib = new Date(Date.now()+8*60*60*1000);
   if (isKemarin) wib.setDate(wib.getDate()-1);
   return wib.toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'});
 }
 
-// ── PESAN MENU ────────────────────────────────────────
+// ── GEMINI: baca foto ─────────────────────────────────
+async function bacaFotoGemini(imageUrl, prompt) {
+  const imgResp = await axios.get(imageUrl, { responseType:'arraybuffer', timeout:15000 });
+  const b64  = Buffer.from(imgResp.data).toString('base64');
+  const mime = imgResp.headers['content-type'] || 'image/jpeg';
+  const resp = await axios.post(GEMINI_URL, {
+    contents: [{ parts: [
+      { inline_data: { mime_type: mime, data: b64 } },
+      { text: prompt }
+    ]}]
+  }, { timeout: 30000 });
+  return resp.data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+}
+
+// Prompt per menu
+function promptPenjualan(namaToko, isKemarin) {
+  const tgl = getTanggal(isKemarin);
+  return `Kamu asisten laporan toko. Baca data penjualan dari gambar ini untuk toko "${namaToko}" tanggal ${tgl}.
+Ekstrak data dan buat laporan WhatsApp format ini PERSIS:
+
+━━━━━━━━━━━━━━━━━━
+📊 *LAPORAN PENJUALAN*
+🏪 *Toko ${namaToko}*
+━━━━━━━━━━━━━━━━━━
+📅 *${tgl}*${isKemarin?' _(kemarin)_':''}
+
+💰 *PENJUALAN PER KASSA*
+• Kassa 1 : [nilai atau -]
+• Kassa 2 : [nilai atau -]
+
+📦 *TOTAL KESELURUHAN*
+[total]
+
+💳 *METODE PEMBAYARAN*
+• Tunai  : [nilai atau -]
+• Debit  : [nilai atau -]
+• Kredit : [nilai atau -]
+
+🛒 *JENIS PENJUALAN*
+• Ecer   : [nilai atau -]
+• Grosir : [nilai atau -]
+━━━━━━━━━━━━━━━━━━
+_Laporan otomatis_
+
+Gunakan format Rp X.XXX.XXX untuk angka. Jangan tambah teks lain.`;
+}
+
+function promptHarga(namaToko, isKemarin) {
+  const tgl = getTanggal(isKemarin);
+  const sapaan = getSapaan(namaToko);
+  return `Kamu asisten laporan toko. Baca data harga barang dari gambar ini untuk toko "${namaToko}" tanggal ${tgl}.
+Buat laporan WhatsApp format ini:
+
+${sapaan}
+
+Harga Barang Untuk Hari ${isKemarin?'Kemarin':'Ini'} *${tgl}*${isKemarin?' _(kemarin)_':''}
+
+🆕 *Barang Yang Baru:*
+• [nama barang] (jika ada, jika tidak ada hapus bagian ini)
+
+📈 *Barang Yang Naik Harga:*
+• [nama barang] (jika ada, jika tidak ada hapus bagian ini)
+
+📉 *Barang Yang Turun Harga:*
+• [nama barang] (jika ada, jika tidak ada hapus bagian ini)
+
+Nota Semuanya Sudah Diinput Di Sistem, Bisa Langsung Di Print Barcodenya Ya.
+
+Mohon Dicek Kembali Fisik Barang Dengan Yang Di Input Disistem, Jika Ada Yang Tidak Sesuai Mohon Di Konfirmasi Lagi. Terima Kasih🙏🏻
+
+Jangan tambah teks lain di luar format.`;
+}
+
+function promptMarket(isKemarin) {
+  const tgl = getTanggal(isKemarin);
+  return `Kamu asisten laporan toko. Baca data penjualan marketplace dari gambar ini tanggal ${tgl}.
+Buat laporan WhatsApp format ini PERSIS:
+
+━━━━━━━━━━━━━━━━━━━━━━
+🛍️ *Total Penjualan Marketplace*
+*Perabot Mama*
+📅 Periode ${tgl}${isKemarin?' _(kemarin)_':''}
+━━━━━━━━━━━━━━━━━━━━━━
+🏪 *Per Toko*
+• Toko Perabot Mama Oesapa : [nilai atau Rp. -]
+• Toko Perabot Mama TDM    : [nilai atau Rp. -]
+• Toko Central Perabot     : [nilai atau Rp. -]
+──────────────────────
+💰 *Total* : [total]
+
+📱 *Per Channel Penjualan*
+• Penjualan via WA        : [nilai atau Rp. -]
+• Penjualan via Shopee    : [nilai atau Rp. -]
+• Penjualan via Tiktok    : [nilai atau Rp. -]
+• Penjualan via Tokopedia : [nilai atau Rp. -]
+──────────────────────
+💰 *Total Penjualan* : [total]
+
+💳 *Metode Pembayaran*
+• Tunai/CASH : [nilai atau Rp. -]
+• Debit/TF   : [nilai atau Rp. -]
+• Credit     : [nilai atau Rp. -]
+━━━━━━━━━━━━━━━━━━━━━━
+[nomor nota jika ada, format: - Nomor Nota XXX]
+_Laporan otomatis_
+
+Jangan tambah teks lain di luar format.`;
+}
+
+// ── PESAN NAVIGASI ────────────────────────────────────
 const MSG_MENU_UTAMA = `🤖 *Bot Laporan Toko*
 ━━━━━━━━━━━━━━━━━━
 Pilih menu:
@@ -63,12 +166,12 @@ Pilih menu:
 *3.* 🛍️ Laporan Marketplace
 
 ━━━━━━━━━━━━━━━━━━
-Balas dengan angka *1*, *2*, atau *3*`;
+Balas *1*, *2*, atau *3*`;
 
 function MSG_PILIH_TOKO(menu) {
-  const emoji = menu===1?'📊':menu===2?'🏷️':'🛍️';
-  const nama  = menu===1?'Laporan Penjualan':menu===2?'Laporan Harga Barang':'Laporan Marketplace';
-  return `${emoji} *${nama}*
+  const nm = menu===1?'Laporan Penjualan':menu===2?'Laporan Harga Barang':'Laporan Marketplace';
+  const em = menu===1?'📊':menu===2?'🏷️':'🛍️';
+  return `${em} *${nm}*
 ━━━━━━━━━━━━━━━━━━
 Pilih toko:
 
@@ -77,106 +180,53 @@ Pilih toko:
 *3.* Perabot Mama Oesapa
 *4.* Perabot Mamaku Kefamenanu
 
-━━━━━━━━━━━━━━━━━━
-Balas *0* untuk kembali ke menu utama`;
+Balas *0* untuk kembali`;
 }
 
-const MSG_PILIH_HARI = (namaToko) =>
-`🏪 *${namaToko}*
+const MSG_PILIH_HARI = (nama) =>
+`🏪 *${nama}*
 ━━━━━━━━━━━━━━━━━━
 Laporan untuk:
 
 *1.* 📅 Hari ini
 *2.* 📅 Kemarin
 
-━━━━━━━━━━━━━━━━━━
 Balas *0* untuk kembali`;
 
-// Format contoh per menu
-function MSG_FORMAT_PENJUALAN(namaToko, isKemarin) {
+function MSG_SIAP_INPUT(nama, isKemarin, menu) {
   const tgl = getTanggal(isKemarin);
-  return `📊 *Laporan Penjualan*
-🏪 ${namaToko}
-📅 ${tgl}
+  const contoh = menu===1
+    ? `k1 29000000\nk2 11000000\ntunai 26000000\ndebit 14000000\nkredit 0\necer 23000000\ngrosir 17000000`
+    : menu===2
+    ? `---baru---\nNama barang baru\n---naik---\nNama barang naik\n---turun---\nNama barang turun`
+    : `oesapa 0\ntdm 0\ncentral 21061000\nwa 21061000\nshopee 0\ntiktok 0\ntokopedia 0\ntunai 304000\ndebit 20757000\nkredit 0\nnota 019 (009383/CPK/05/26)`;
+
+  return `✅ *Siap!*
+🏪 ${nama}
+📅 ${tgl}${isKemarin?' _(kemarin)_':''}
 ━━━━━━━━━━━━━━━━━━
-Kirim data seperti contoh berikut (hapus yang tidak ada):
+Pilih cara input:
+
+📸 *Kirim FOTO* struk/layar kasir
+_atau_
+⌨️ *Ketik data* manual:
 
 \`\`\`
-k1 29000000
-k2 11000000
-k3 0
-tunai 26000000
-debit 14000000
-kredit 0
-ecer 23000000
-grosir 17000000
+${contoh}
 \`\`\`
 
-Isi angka tanpa titik/koma.
 Balas *0* untuk batal.`;
 }
 
-function MSG_FORMAT_HARGA(namaToko, isKemarin) {
-  const tgl = getTanggal(isKemarin);
-  return `🏷️ *Laporan Harga Barang*
-🏪 ${namaToko}
-📅 ${tgl}
-━━━━━━━━━━━━━━━━━━
-Kirim data seperti contoh berikut:
-
-\`\`\`
----baru---
-Nama barang baru 1
-Nama barang baru 2
----naik---
-Nama barang naik harga
----turun---
-Nama barang turun harga
----note---
-Catatan tambahan (opsional)
-\`\`\`
-
-Bagian yang kosong boleh dihapus.
-Balas *0* untuk batal.`;
-}
-
-function MSG_FORMAT_MARKET(isKemarin) {
-  const tgl = getTanggal(isKemarin);
-  return `🛍️ *Laporan Marketplace*
-📅 ${tgl}
-━━━━━━━━━━━━━━━━━━
-Kirim data seperti contoh berikut:
-
-\`\`\`
-oesapa 0
-tdm 0
-central 21061000
-wa 21061000
-shopee 0
-tiktok 0
-tokopedia 0
-tunai 304000
-debit 20757000
-kredit 0
-nota 019 (009383/CPK/05/26)
-nota 019 (009389/CPK/05/26)
-\`\`\`
-
-Isi 0 untuk yang kosong.
-Balas *0* untuk batal.`;
-}
-
-// ── PROSES DATA ───────────────────────────────────────
+// ── PROSES DATA MANUAL ────────────────────────────────
 function buatLaporanPenjualan(text, namaToko, isKemarin) {
-  const tgl      = getTanggal(isKemarin);
-  const labelTgl = isKemarin ? `📅 *${tgl}* _(kemarin)_` : `📅 *${tgl}*`;
+  const tgl = getTanggal(isKemarin);
   const d = {};
   text.trim().toLowerCase().split('\n').forEach(line => {
     const p = line.trim().split(/\s+/);
     if (p.length>=2) { const v=p[1].replace(/[^0-9]/g,''); if(v) d[p[0]]=v; }
   });
-  const k1=parseInt(d.k1||0), k2=parseInt(d.k2||0), k3=parseInt(d.k3||0);
-  const total=k1+k2+k3;
+  const k1=parseInt(d.k1||0),k2=parseInt(d.k2||0),k3=parseInt(d.k3||0),total=k1+k2+k3;
   let kassa='';
   if(k1) kassa+=`• Kassa 1 : ${formatRupiahPlain(k1)}\n`;
   if(k2) kassa+=`• Kassa 2 : ${formatRupiahPlain(k2)}\n`;
@@ -186,7 +236,7 @@ function buatLaporanPenjualan(text, namaToko, isKemarin) {
 📊 *LAPORAN PENJUALAN*
 🏪 *Toko ${namaToko}*
 ━━━━━━━━━━━━━━━━━━
-${labelTgl}
+📅 *${tgl}*${isKemarin?' _(kemarin)_':''}
 
 💰 *PENJUALAN PER KASSA*
 ${kassa}
@@ -206,49 +256,45 @@ _Laporan otomatis_`;
 }
 
 function buatLaporanHarga(text, namaToko, isKemarin) {
-  const tgl      = getTanggal(isKemarin);
-  const labelTgl = isKemarin ? `*${tgl}* _(kemarin)_` : `*${tgl}*`;
-  const sapaan   = getSapaan(namaToko);
-  const d        = { baru:[], naik:[], turun:[], note:[] };
-  let mode = null;
-  text.trim().split('\n').forEach(line => {
-    const t = line.trim(), l = t.toLowerCase();
-    if (!t) return;
-    if (l.includes('---baru---')  || l==='baru')  { mode='baru';  return; }
-    if (l.includes('---naik---')  || l==='naik')  { mode='naik';  return; }
-    if (l.includes('---turun---') || l==='turun') { mode='turun'; return; }
-    if (l.includes('---note---')  || l==='note')  { mode='note';  return; }
-    if (mode) d[mode].push(t);
+  const tgl=getTanggal(isKemarin), sapaan=getSapaan(namaToko);
+  const d={baru:[],naik:[],turun:[],note:[]};
+  let mode=null;
+  text.trim().split('\n').forEach(line=>{
+    const t=line.trim(),l=t.toLowerCase();
+    if(!t) return;
+    if(l.includes('---baru---')||l==='baru'){mode='baru';return;}
+    if(l.includes('---naik---')||l==='naik'){mode='naik';return;}
+    if(l.includes('---turun---')||l==='turun'){mode='turun';return;}
+    if(l.includes('---note---')||l==='note'){mode='note';return;}
+    if(mode) d[mode].push(t);
   });
-  const catatan = `Nota Semuanya Sudah Diinput Di Sistem, Bisa Langsung Di Print Barcodenya Ya.\n\nMohon Dicek Kembali Fisik Barang Dengan Yang Di Input Disistem, Jika Ada Yang Tidak Sesuai Mohon Di Konfirmasi Lagi. Terima Kasih🙏🏻`;
-  let msg = `${sapaan}\n\nHarga Barang Untuk Hari ${isKemarin?'Kemarin':'Ini'} ${labelTgl}\n`;
-  if(d.baru.length>0)  { msg+=`\n🆕 *Barang Yang Baru:*\n`;        d.baru.forEach(b=>msg+=`• ${b}\n`); }
-  if(d.naik.length>0)  { msg+=`\n📈 *Barang Yang Naik Harga:*\n`;  d.naik.forEach(b=>msg+=`• ${b}\n`); }
-  if(d.turun.length>0) { msg+=`\n📉 *Barang Yang Turun Harga:*\n`; d.turun.forEach(b=>msg+=`• ${b}\n`); }
-  if(d.note.length>0)  { msg+=`\n📝 *Catatan Tambahan:*\n`;        d.note.forEach(b=>msg+=`${b}\n`); }
+  const catatan=`Nota Semuanya Sudah Diinput Di Sistem, Bisa Langsung Di Print Barcodenya Ya.\n\nMohon Dicek Kembali Fisik Barang Dengan Yang Di Input Disistem, Jika Ada Yang Tidak Sesuai Mohon Di Konfirmasi Lagi. Terima Kasih🙏🏻`;
+  let msg=`${sapaan}\n\nHarga Barang Untuk Hari ${isKemarin?'Kemarin':'Ini'} *${tgl}*${isKemarin?' _(kemarin)_':''}\n`;
+  if(d.baru.length>0){msg+=`\n🆕 *Barang Yang Baru:*\n`;d.baru.forEach(b=>msg+=`• ${b}\n`);}
+  if(d.naik.length>0){msg+=`\n📈 *Barang Yang Naik Harga:*\n`;d.naik.forEach(b=>msg+=`• ${b}\n`);}
+  if(d.turun.length>0){msg+=`\n📉 *Barang Yang Turun Harga:*\n`;d.turun.forEach(b=>msg+=`• ${b}\n`);}
+  if(d.note.length>0){msg+=`\n📝 *Catatan Tambahan:*\n`;d.note.forEach(b=>msg+=`${b}\n`);}
   msg+=`\n${catatan}`;
   return msg;
 }
 
 function buatLaporanMarket(text, isKemarin) {
-  const tgl      = getTanggal(isKemarin);
-  const labelTgl = isKemarin ? `${tgl} _(kemarin)_` : tgl;
-  const d = { oesapa:0,tdm:0,central:0,wa:0,shopee:0,tiktok:0,tokopedia:0,tunai:0,debit:0,kredit:0,nota:[] };
-  text.trim().toLowerCase().split('\n').forEach(line => {
-    const t = line.trim();
-    if (!t) return;
-    if (t.startsWith('nota ')) { d.nota.push(line.trim().substring(5)); return; }
-    const p = t.split(/\s+/);
-    if (p.length>=2 && p[0] in d) d[p[0]] = parseInt(p.slice(1).join('').replace(/[^0-9]/g,''))||0;
+  const tgl=getTanggal(isKemarin);
+  const d={oesapa:0,tdm:0,central:0,wa:0,shopee:0,tiktok:0,tokopedia:0,tunai:0,debit:0,kredit:0,nota:[]};
+  text.trim().toLowerCase().split('\n').forEach(line=>{
+    const t=line.trim();
+    if(!t) return;
+    if(t.startsWith('nota ')){d.nota.push(line.trim().substring(5));return;}
+    const p=t.split(/\s+/);
+    if(p.length>=2&&p[0] in d) d[p[0]]=parseInt(p.slice(1).join('').replace(/[^0-9]/g,''))||0;
   });
-  const totalToko = d.oesapa+d.tdm+d.central;
-  const totalCh   = d.wa+d.shopee+d.tiktok+d.tokopedia;
-  let notaMsg = '';
-  if(d.nota.length>0) { notaMsg='\n'; d.nota.forEach(n=>notaMsg+=`- Nomor Nota ${n}\n`); }
+  const totalToko=d.oesapa+d.tdm+d.central, totalCh=d.wa+d.shopee+d.tiktok+d.tokopedia;
+  let notaMsg='';
+  if(d.nota.length>0){notaMsg='\n';d.nota.forEach(n=>notaMsg+=`- Nomor Nota ${n}\n`);}
   return `━━━━━━━━━━━━━━━━━━━━━━
 🛍️ *Total Penjualan Marketplace*
 *Perabot Mama*
-📅 Periode ${labelTgl}
+📅 Periode ${tgl}${isKemarin?' _(kemarin)_':''}
 ━━━━━━━━━━━━━━━━━━━━━━
 🏪 *Per Toko*
 • Toko Perabot Mama Oesapa : ${formatRupiah(d.oesapa)}
@@ -282,74 +328,70 @@ app.post('/webhook', async (req, res) => {
     const body    = req.body || {};
     const sender  = body.sender || body.from || body.phone || null;
     const message = body.message || body.text || body.msg || '';
-    if (!sender || !message) return;
+    const image   = body.image   || body.file || body.media || '';
+    if (!sender) return;
 
     const msg = message.trim();
     const low = msg.toLowerCase();
 
-    // Reset / menu utama
+    // Reset
     if (['0','batal','menu','halo','hi','mulai','start'].includes(low)) {
       sesi[sender] = {};
       await kirimWA(sender, MSG_MENU_UTAMA);
       return;
     }
 
-    // Inisiasi sesi jika belum ada
     if (!sesi[sender]) sesi[sender] = {};
     const s = sesi[sender];
 
     // ── LEVEL 1: Pilih menu ──
     if (!s.menu) {
-      if (msg === '1') { s.menu = 1; await kirimWA(sender, MSG_PILIH_TOKO(1)); return; }
-      if (msg === '2') { s.menu = 2; await kirimWA(sender, MSG_PILIH_TOKO(2)); return; }
-      if (msg === '3') { s.menu = 3; s.toko = 'market';
-        await kirimWA(sender, MSG_PILIH_HARI('Marketplace Perabot Mama')); return; }
-      await kirimWA(sender, MSG_MENU_UTAMA); return;
+      if (msg==='1'||msg==='2'||msg==='3') {
+        s.menu = parseInt(msg);
+        if (s.menu===3) {
+          await kirimWA(sender, MSG_PILIH_HARI('Marketplace Perabot Mama'));
+        } else {
+          await kirimWA(sender, MSG_PILIH_TOKO(s.menu));
+        }
+      } else {
+        await kirimWA(sender, MSG_MENU_UTAMA);
+      }
+      return;
     }
 
     // ── LEVEL 2: Pilih toko (menu 1 & 2) ──
-    if (s.menu !== 3 && !s.toko) {
-      const idx = parseInt(msg) - 1;
-      if (idx >= 0 && idx < TOKO_LIST.length) {
-        s.toko = TOKO_LIST[idx].kode;
-        await kirimWA(sender, MSG_PILIH_HARI(TOKO_LIST[idx].nama));
-      } else {
-        await kirimWA(sender, MSG_PILIH_TOKO(s.menu));
+    if (s.menu!==3 && !s.toko) {
+      const idx = parseInt(msg)-1;
+      if (idx>=0 && idx 0) {
+      // Proses foto dengan Gemini
+      await kirimWA(sender, '📸 Foto diterima, sedang diproses... ⏳');
+      try {
+        let prompt = '';
+        if (s.menu===1) prompt = promptPenjualan(nama, s.kemarin);
+        if (s.menu===2) prompt = promptHarga(nama, s.kemarin);
+        if (s.menu===3) prompt = promptMarket(s.kemarin);
+        laporan = await bacaFotoGemini(image, prompt);
+      } catch(e) {
+        console.error('Gemini error:', e?.response?.data || e.message);
+        await kirimWA(sender, '❌ Gagal baca foto. Coba kirim ulang foto yang lebih terang, atau ketik data manual.');
+        return;
       }
+    } else if (msg) {
+      // Proses data manual
+      if (s.menu===1) laporan = buatLaporanPenjualan(msg, nama, s.kemarin);
+      if (s.menu===2) laporan = buatLaporanHarga(msg, nama, s.kemarin);
+      if (s.menu===3) laporan = buatLaporanMarket(msg, s.kemarin);
+    } else {
       return;
     }
 
-    // ── LEVEL 3: Pilih hari ──
-    if (s.kemarin === undefined) {
-      if (msg === '1') { s.kemarin = false; }
-      else if (msg === '2') { s.kemarin = true; }
-      else {
-        const namaToko = s.toko === 'market' ? 'Marketplace Perabot Mama' : TOKO[s.toko];
-        await kirimWA(sender, MSG_PILIH_HARI(namaToko)); return;
-      }
-      // Kirim contoh format sesuai menu
-      const nama = s.toko === 'market' ? 'Marketplace' : TOKO[s.toko];
-      if (s.menu === 1) await kirimWA(sender, MSG_FORMAT_PENJUALAN(nama, s.kemarin));
-      if (s.menu === 2) await kirimWA(sender, MSG_FORMAT_HARGA(nama, s.kemarin));
-      if (s.menu === 3) await kirimWA(sender, MSG_FORMAT_MARKET(s.kemarin));
-      return;
+    if (laporan) {
+      await kirimWA(sender, laporan);
+      sesi[sender] = {};
+      setTimeout(async()=>{
+        await kirimWA(sender, '✅ Laporan selesai!\n\nKirim *menu* untuk laporan berikutnya.');
+      }, 1000);
     }
-
-    // ── LEVEL 4: Terima data & buat laporan ──
-    let laporan = '';
-    const nama = s.toko === 'market' ? 'Marketplace' : TOKO[s.toko];
-    if (s.menu === 1) laporan = buatLaporanPenjualan(msg, nama, s.kemarin);
-    if (s.menu === 2) laporan = buatLaporanHarga(msg, nama, s.kemarin);
-    if (s.menu === 3) laporan = buatLaporanMarket(msg, s.kemarin);
-
-    await kirimWA(sender, laporan);
-
-    // Reset sesi setelah laporan selesai
-    sesi[sender] = {};
-    // Tawarkan kembali ke menu
-    setTimeout(async () => {
-      await kirimWA(sender, `✅ Laporan selesai!\n\nKirim *menu* untuk laporan berikutnya.`);
-    }, 1000);
 
   } catch (e) {
     console.error('Error:', e.message);
