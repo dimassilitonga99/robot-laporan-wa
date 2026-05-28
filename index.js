@@ -166,13 +166,37 @@ var sesi = {};
 
 // ── MENU ──────────────────────────────────────────────
 function getMenu(nomor) {
-  var base = '\ud83e\udd16 *Bot Laporan & Harga Toko*\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nPilih menu:\n\n*1.* \ud83d\udcca Laporan Penjualan\n*2.* \ud83c\udff7\ufe0f Laporan Harga Barang\n*3.* \ud83d\udecd\ufe0f Laporan Marketplace';
+  // Menu dasar untuk semua orang
+  var base =
+    '\ud83e\udd16 *Bot Laporan & Harga Toko*\n' +
+    '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n' +
+    'Pilih menu:\n\n' +
+    '*1.* \ud83d\udcca Laporan Penjualan\n' +
+    '*2.* \ud83c\udff7\ufe0f Laporan Harga Barang\n' +
+    '*3.* \ud83d\udecd\ufe0f Laporan Marketplace';
+
+  // Menu 4 hanya muncul untuk member & admin
   if (isMember(nomor)) {
-    base += '\n*4.* \ud83d\udd0d Cari Harga Barang\n\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nAtau langsung ketik:\n\u2022 _cari periuk eagle 20_\n\u2022 _cari NN00036_\n\u2022 _stok NN00036 25_';
+    base +=
+      '\n*4.* \ud83d\udd0d Cari Harga Barang\n\n' +
+      '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n' +
+      'Atau langsung ketik:\n' +
+      '\u2022 _cari periuk eagle 20_\n' +
+      '\u2022 _cari NN00036_\n' +
+      '\u2022 _stok NN00036 25_';
+  } else {
+    base += '\n\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501';
   }
+
+  // Perintah admin HANYA tampil untuk admin
   if (isAdmin(nomor)) {
-    base += '\n\n\ud83d\udc51 *Perintah Admin:*\n\u2022 _daftar 6281234567890_\n\u2022 _hapus 6281234567890_\n\u2022 _listmember_';
+    base +=
+      '\n\n\ud83d\udc51 *Perintah Admin:*\n' +
+      '\u2022 _daftar 6281234567890_\n' +
+      '\u2022 _hapus 6281234567890_\n' +
+      '\u2022 _listmember_';
   }
+
   return base;
 }
 
