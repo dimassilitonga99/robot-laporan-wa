@@ -79,7 +79,7 @@ function formatHasil(items) {
       '\ud83d\udccf *Satuan* : ' + d.satuan + '\n' +
       '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n' +
       '\ud83d\udcb0 *Harga Ecer*  : ' + formatRp(d.ecer) + '\n' +
-      '\ud83d\udcb0 *Harga Ambil* : ' + formatRp(d.ambil) + '\n' +
+      '\ud83d\udcb0 *Harga Ambil* : ' + formatRp(d.ambil 6 pcs) + '\n' +
       '\ud83d\udcca *Stok*        : ' + (d.stok > 0 ? d.stok + ' ' + d.satuan : 'Kosong') + '\n' +
       '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501';
   }
