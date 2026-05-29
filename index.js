@@ -15,6 +15,7 @@ const GEMINI_URL   = 'https://generativelanguage.googleapis.com/v1beta/models/ge
 // ── AKSES KONTROL ─────────────────────────────────────
 const ADMIN       = '6285829278962';
 const MEMBER_FILE = path.join(__dirname, 'members.json');
+const KONTAK_FILE = path.join(__dirname, 'kontak.json');
 
 function loadMembers() {
   try { if (fs.existsSync(MEMBER_FILE)) return JSON.parse(fs.readFileSync(MEMBER_FILE, 'utf8')); } catch(e) {}
@@ -23,9 +24,42 @@ function loadMembers() {
 function saveMembers(m) {
   try { fs.writeFileSync(MEMBER_FILE, JSON.stringify(m, null, 2)); return true; } catch(e) { return false; }
 }
+
+function loadKontak() {
+  try { if (fs.existsSync(KONTAK_FILE)) return JSON.parse(fs.readFileSync(KONTAK_FILE, 'utf8')); } catch(e) {}
+  return {
+    '6285253949803': 'Pak Security Marthen',
+    '6285737005301': 'Kak Bagas Pacar Beda Agama',
+    '6285211988252': 'Kak Admin Marketplace',
+    '6281383924057': 'Kak Fajar (Buka Mas Fajar Kefa)',
+    '6282235572821': 'Kak yang Saya Tidak Tau Namanya',
+    '6287841617474': 'Mas Awin Gacor',
+    '6281584937710': 'Kak Safira',
+    '6282266026564': 'Mas Abi Mustafa',
+    '6285829278962': 'Admin'
+  };
+}
+function saveKontak(k) {
+  try { fs.writeFileSync(KONTAK_FILE, JSON.stringify(k, null, 2)); return true; } catch(e) { return false; }
+}
+
 var MEMBERS = loadMembers();
+var KONTAK  = loadKontak();
+
 function isAdmin(n) { return n === ADMIN; }
 function isMember(n) { return MEMBERS.indexOf(n) >= 0 || n === ADMIN; }
+function getNama(n) { return KONTAK[n] || null; }
+
+function getSapaan(nomor) {
+  var jam = new Date(Date.now() + 8*3600000).getUTCHours();
+  var waktu = jam>=5&&jam<11?'Pagi':jam>=11&&jam<15?'Siang':jam>=15&&jam<19?'Sore':'Malam';
+  var nama = getNama(nomor);
+  if (nama) return 'Selamat ' + waktu + ', *' + nama + '*! \ud83d\ude0a';
+  return 'Selamat ' + waktu + '! \ud83d\ude0a';
+}
+
+// Nomor yang sudah disapa di sesi ini (reset tiap restart)
+var sudahDisapa = {};
 
 // ── DATA BARANG 5 TOKO ────────────────────────────────
 var DATA_BARANG = [];
@@ -62,7 +96,6 @@ function loadExcel() {
     if (!fs.existsSync(EXCEL_PATH)) { console.log('File tidak ditemukan!'); return; }
     var wb   = xlsx.readFile(EXCEL_PATH);
     var ws   = wb.Sheets[wb.SheetNames[0]];
-    // Skip baris pertama (label grup), pakai baris ke-2 sebagai header
     var rows = xlsx.utils.sheet_to_json(ws, { defval: 0, range: 1 });
     DATA_BARANG = rows.map(function(r) {
       var item = {
@@ -127,17 +160,15 @@ function formatRp(n) {
 function formatHasil(items, tokoKode) {
   if (items.length === 0) return '\u274c Barang tidak ditemukan.\n\nCoba kata kunci berbeda.\nContoh: _dandang eagle 20_';
   var namaToko = NAMA_TOKO[tokoKode] || '-';
-
   if (items.length === 1) {
     var d = items[0];
     var h = d.harga[tokoKode];
-    return '\ud83c\udff7\ufe0f *Detail Barang*\n' +
-      '\ud83c\udfe6 *' + namaToko + '*\n' +
+    return '\ud83c\udff7\ufe0f *Detail Barang*\n\ud83c\udfe6 *' + namaToko + '*\n' +
       '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n' +
       '\ud83d\udd16 *Kode*   : ' + d.kode + '\n' +
       '\ud83d\udce6 *Nama*   : ' + d.nama + '\n' +
-      '\ud83c\udff7\ufe0f *Jenis*  : ' + (d.jenis || '-') + '\n' +
-      '\ud83c\udfd7\ufe0f *Merek*  : ' + (d.merek || '-') + '\n' +
+      '\ud83c\udff7\ufe0f *Jenis*  : ' + (d.jenis||'-') + '\n' +
+      '\ud83c\udfd7\ufe0f *Merek*  : ' + (d.merek||'-') + '\n' +
       '\ud83d\udccf *Satuan* : ' + d.satuan + '\n' +
       '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n' +
       '\ud83d\udcb0 *Harga Ecer*  : ' + formatRp(h.ecer) + '\n' +
@@ -145,17 +176,12 @@ function formatHasil(items, tokoKode) {
       '\ud83d\udcca *Stok*        : ' + (h.stok > 0 ? h.stok + ' ' + d.satuan : 'Kosong') + '\n' +
       '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501';
   }
-
   if (items.length > 10) return '\u26a0\ufe0f Ditemukan *' + items.length + ' barang*. Terlalu banyak.\n\nCoba lebih spesifik.';
-
   var msg = '\ud83d\udd0d *Ditemukan ' + items.length + ' barang*\n\ud83c\udfe6 *' + namaToko + '*\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n';
   items.forEach(function(d, i) {
     var h = d.harga[tokoKode];
-    msg += (i+1) + '. *' + d.nama + '*\n' +
-      '   \ud83d\udd16 ' + d.kode + ' | ' + d.satuan + '\n' +
-      '   \ud83d\udcb0 Ecer: ' + formatRp(h.ecer) + ' | Ambil: ' + formatRp(h.ambil) + '\n' +
-      '   \ud83d\udcca Stok: ' + (h.stok > 0 ? h.stok + ' ' + d.satuan : 'Kosong') + '\n';
-    if (i < items.length - 1) msg += '\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n';
+    msg += (i+1) + '. *' + d.nama + '*\n   \ud83d\udd16 ' + d.kode + ' | ' + d.satuan + '\n   \ud83d\udcb0 Ecer: ' + formatRp(h.ecer) + ' | Ambil: ' + formatRp(h.ambil) + '\n   \ud83d\udcca Stok: ' + (h.stok > 0 ? h.stok+' '+d.satuan : 'Kosong') + '\n';
+    if (i < items.length-1) msg += '\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n';
   });
   return msg + '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501';
 }
@@ -163,11 +189,7 @@ function formatHasil(items, tokoKode) {
 function updateStok(kode, tokoKode, jumlah) {
   var k = kode.trim().toUpperCase();
   for (var i = 0; i < DATA_BARANG.length; i++) {
-    if (DATA_BARANG[i].kode === k) {
-      DATA_BARANG[i].harga[tokoKode].stok = jumlah;
-      saveExcel();
-      return DATA_BARANG[i];
-    }
+    if (DATA_BARANG[i].kode === k) { DATA_BARANG[i].harga[tokoKode].stok = jumlah; saveExcel(); return DATA_BARANG[i]; }
   }
   return null;
 }
@@ -179,7 +201,7 @@ async function kirimWA(target, message) {
 
 function fRp(n) { var v=parseFloat(n)||0; return v===0?'Rp. -':'Rp. '+v.toLocaleString('id-ID'); }
 function fRpP(n) { return 'Rp '+(parseFloat(n)||0).toLocaleString('id-ID'); }
-function sapaan(nm) { var j=new Date(Date.now()+8*3600000).getUTCHours(); return 'Selamat '+(j>=5&&j<11?'Pagi':j>=11&&j<15?'Siang':j>=15&&j<19?'Sore':'Malam')+' Team '+nm; }
+function sapaanTim(nm) { var j=new Date(Date.now()+8*3600000).getUTCHours(); return 'Selamat '+(j>=5&&j<11?'Pagi':j>=11&&j<15?'Siang':j>=15&&j<19?'Sore':'Malam')+' Team '+nm; }
 function tgl(kem) { var d=new Date(Date.now()+8*3600000); if(kem) d.setDate(d.getDate()-1); return d.toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'}); }
 
 async function gemini(url, prompt) {
@@ -192,67 +214,28 @@ var sesi = {};
 
 // ── MENU ──────────────────────────────────────────────
 function getMenu(nomor) {
-  var base =
-    '\ud83e\udd16 *Bot Laporan & Harga Toko*\n' +
-    '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n' +
-    'Pilih menu:\n\n' +
-    '*1.* \ud83d\udcca Laporan Penjualan\n' +
-    '*2.* \ud83c\udff7\ufe0f Laporan Harga Barang\n' +
-    '*3.* \ud83d\udecd\ufe0f Laporan Marketplace';
+  var nama = getNama(nomor);
+  var base = '\ud83e\udd16 *Bot Laporan & Harga Toko*\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nPilih menu:\n\n*1.* \ud83d\udcca Laporan Penjualan\n*2.* \ud83c\udff7\ufe0f Laporan Harga Barang\n*3.* \ud83d\udecd\ufe0f Laporan Marketplace';
   if (isMember(nomor)) {
-    base +=
-      '\n*4.* \ud83d\udd0d Cari Harga Barang\n\n' +
-      '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n' +
-      'Atau langsung ketik:\n' +
-      '\u2022 _cari dandang eagle 20_\n' +
-      '\u2022 _cari NN00001_\n' +
-      '\u2022 _stok nk NN00001 10_';
+    base += '\n*4.* \ud83d\udd0d Cari Harga Barang\n\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nAtau langsung ketik:\n\u2022 _cari dandang eagle 20_\n\u2022 _cari NN00001_\n\u2022 _stok nk NN00001 10_';
   } else {
     base += '\n\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501';
   }
   if (isAdmin(nomor)) {
-    base +=
-      '\n\n\ud83d\udc51 *Perintah Admin:*\n' +
-      '\u2022 _daftar 6281234567890_\n' +
-      '\u2022 _hapus 6281234567890_\n' +
-      '\u2022 _listmember_';
+    base += '\n\n\ud83d\udc51 *Perintah Admin:*\n\u2022 _daftar 6281234567890_\n\u2022 _hapus 6281234567890_\n\u2022 _listmember_\n\u2022 _namakontak 6281234567890 Nama Lengkap_\n\u2022 _listkontak_';
   }
   return base;
 }
 
 var MSG_PILIH_TOKO_CARI =
-  '\ud83d\udd0d *Cari Harga Barang*\n' +
-  '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n' +
-  'Pilih toko:\n\n' +
-  '*1.* Nasional Kitchen\n' +
-  '*2.* Perabot Mama TDM\n' +
-  '*3.* Perabot Mama Oesapa\n' +
-  '*4.* Perabot Mamaku Kefamenanu\n' +
-  '*5.* Central Perabot\n\n' +
-  'Balas *0* untuk kembali';
+  '\ud83d\udd0d *Cari Harga Barang*\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nPilih toko:\n\n*1.* Nasional Kitchen\n*2.* Perabot Mama TDM\n*3.* Perabot Mama Oesapa\n*4.* Perabot Mamaku Kefamenanu\n*5.* Central Perabot\n\nBalas *0* untuk kembali';
 
 function MSG_SIAP_CARI(namaToko) {
-  return '\ud83d\udd0d *Cari Harga Barang*\n' +
-    '\ud83c\udfe6 *' + namaToko + '*\n' +
-    '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n' +
-    'Ketik nama atau kode barang:\n\n' +
-    '\u2022 _dandang eagle 20_\n' +
-    '\u2022 _NN00001_\n' +
-    '\u2022 _golden sunkist_\n\n' +
-    'Balas *0* untuk kembali ke menu.';
+  return '\ud83d\udd0d *Cari Harga Barang*\n\ud83c\udfe6 *' + namaToko + '*\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nKetik nama atau kode barang:\n\n\u2022 _dandang eagle 20_\n\u2022 _NN00001_\n\u2022 _golden sunkist_\n\nBalas *0* untuk kembali ke menu.';
 }
 
-// Pilih toko untuk laporan (4 toko utama)
 function mPilihToko(m) {
-  return (m===1?'\ud83d\udcca':m===2?'\ud83c\udff7\ufe0f':'\ud83d\udecd\ufe0f')+' *'+(m===1?'Laporan Penjualan':m===2?'Laporan Harga Barang':'Laporan Marketplace')+'*\n' +
-    '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n' +
-    'Pilih toko:\n\n' +
-    '*1.* Nasional Kitchen\n' +
-    '*2.* Perabot Mama TDM\n' +
-    '*3.* Perabot Mama Oesapa\n' +
-    '*4.* Perabot Mamaku Kefamenanu\n' +
-    '*5.* Central Perabot\n\n' +
-    'Balas *0* untuk kembali';
+  return (m===1?'\ud83d\udcca':m===2?'\ud83c\udff7\ufe0f':'\ud83d\udecd\ufe0f')+' *'+(m===1?'Laporan Penjualan':m===2?'Laporan Harga Barang':'Laporan Marketplace')+'*\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nPilih toko:\n\n*1.* Nasional Kitchen\n*2.* Perabot Mama TDM\n*3.* Perabot Mama Oesapa\n*4.* Perabot Mamaku Kefamenanu\n*5.* Central Perabot\n\nBalas *0* untuk kembali';
 }
 
 function mPilihHari(nm) { return '\ud83c\udfe6 *'+nm+'*\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nLaporan untuk:\n\n*1.* \ud83d\udcc5 Hari ini\n*2.* \ud83d\udcc5 Kemarin\n\nBalas *0* untuk kembali'; }
@@ -273,7 +256,7 @@ function lPenjualan(text, nm, kem) {
 }
 
 function lHarga(text, nm, kem) {
-  var t=tgl(kem), s=sapaan(nm), h=kem?'Kemarin':'Ini', k=kem?' _(kemarin)_':'';
+  var t=tgl(kem), s=sapaanTim(nm), h=kem?'Kemarin':'Ini', k=kem?' _(kemarin)_':'';
   var d={baru:[],naik:[],turun:[],note:[]}, mode=null;
   text.trim().split('\n').forEach(function(l){var tr=l.trim(),lo=tr.toLowerCase();if(!tr)return;if(lo.indexOf('---baru---')>=0||lo==='baru'){mode='baru';return;}if(lo.indexOf('---naik---')>=0||lo==='naik'){mode='naik';return;}if(lo.indexOf('---turun---')>=0||lo==='turun'){mode='turun';return;}if(lo.indexOf('---note---')>=0||lo==='note'){mode='note';return;}if(mode)d[mode].push(tr);});
   var cat='Nota Semuanya Sudah Diinput Di Sistem, Bisa Langsung Di Print Barcodenya Ya.\n\nMohon Dicek Kembali Fisik Barang Dengan Yang Di Input Disistem, Jika Ada Yang Tidak Sesuai Mohon Di Konfirmasi Lagi. Terima Kasih\ud83d\ude4f\ud83c\udffc';
@@ -306,6 +289,15 @@ app.post('/webhook', async function(req,res){
     if(!sender) return;
     var msg=message.trim(), low=msg.toLowerCase();
 
+    // ── SAPAAN PERTAMA KALI ──
+    if(!sudahDisapa[sender]) {
+      sudahDisapa[sender] = true;
+      var sapMsg = getSapaan(sender);
+      await kirimWA(sender, sapMsg + '\n\nKirim *menu* untuk melihat pilihan yang tersedia.');
+      // Kalau pesan pertamanya sudah "menu" atau "halo", lanjut proses
+      if(!['menu','halo','hi','mulai','start'].includes(low)) return;
+    }
+
     // ── ADMIN ──
     if(isAdmin(sender)) {
       if(low.startsWith('daftar ')) {
@@ -324,9 +316,26 @@ app.post('/webhook', async function(req,res){
       }
       if(low==='listmember') {
         var lst='\ud83d\udc65 *Daftar Member ('+MEMBERS.length+'):*\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n';
-        MEMBERS.forEach(function(m,i){lst+=(i+1)+'. '+m+'\n';});
+        MEMBERS.forEach(function(m,i){lst+=(i+1)+'. '+m+' — '+(KONTAK[m]||'(belum ada nama)')+'\n';});
         lst+='\n\ud83d\udc51 Admin: '+ADMIN;
         await kirimWA(sender,lst); return;
+      }
+      // Daftarkan/edit nama kontak: namakontak 6281234567890 Nama Lengkap
+      if(low.startsWith('namakontak ')) {
+        var parts = msg.substring(11).trim().split(/\s+/);
+        if(parts.length < 2){await kirimWA(sender,'Format: _namakontak 6281234567890 Nama Lengkap_');return;}
+        var nomorKontak = parts[0].replace(/[^0-9]/g,'');
+        var namaKontak  = parts.slice(1).join(' ');
+        KONTAK[nomorKontak] = namaKontak;
+        saveKontak(KONTAK);
+        await kirimWA(sender,'\u2705 Nama kontak disimpan!\n\ud83d\udcf1 *'+nomorKontak+'*\n\ud83d\udc64 Nama: *'+namaKontak+'*');
+        return;
+      }
+      if(low==='listkontak') {
+        var kkeys = Object.keys(KONTAK);
+        var klst = '\ud83d\udcd2 *Daftar Kontak ('+kkeys.length+'):*\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n';
+        kkeys.forEach(function(k,i){ klst += (i+1)+'. '+k+'\n   \ud83d\udc64 '+KONTAK[k]+'\n'; });
+        await kirimWA(sender, klst); return;
       }
     }
 
@@ -350,10 +359,10 @@ app.post('/webhook', async function(req,res){
       return;
     }
 
-    // ── UPDATE STOK: stok [toko] [kode] [jumlah] ──
+    // ── UPDATE STOK ──
     if(low.startsWith('stok ')) {
       var pts=msg.substring(5).trim().split(/\s+/);
-      if(pts.length<3){await kirimWA(sender,'Format: _stok [toko] [kode] [jumlah]_\nContoh: _stok nk NN00001 10_\n\nKode toko: nk / tdm / oesapa / kefa / cp');return;}
+      if(pts.length<3){await kirimWA(sender,'Format: _stok [toko] [kode] [jumlah]_\nContoh: _stok nk NN00001 10_\n\nKode: nk / tdm / oesapa / kefa / cp');return;}
       var tkS=pts[0].toLowerCase(), kdS=pts[1], jmlS=parseInt(pts[2]);
       if(!TOKO_COLS[tkS]){await kirimWA(sender,'Kode toko tidak valid.\nGunakan: nk, tdm, oesapa, kefa, cp');return;}
       if(isNaN(jmlS)){await kirimWA(sender,'Jumlah harus angka');return;}
@@ -395,7 +404,7 @@ app.post('/webhook', async function(req,res){
       return;
     }
 
-    // ── LEVEL 1: Pilih menu laporan ──
+    // ── LEVEL 1: Pilih menu ──
     if(!s.menu) {
       if(msg==='1'||msg==='2'||msg==='3'){
         s.menu=parseInt(msg);
@@ -408,7 +417,7 @@ app.post('/webhook', async function(req,res){
       return;
     }
 
-    // ── LEVEL 2: Pilih toko laporan ──
+    // ── LEVEL 2: Pilih toko ──
     if(s.menu!==3&&!s.toko){
       var ti=parseInt(msg)-1;
       if(ti>=0&&ti<TOKO_LIST.length){s.toko=TOKO_LIST[ti].kode;await kirimWA(sender,mPilihHari(TOKO_LIST[ti].nama));}
@@ -426,16 +435,16 @@ app.post('/webhook', async function(req,res){
     }
 
     // ── LEVEL 4: Terima data / foto ──
-    var nama=s.menu===3?'Marketplace Perabot Mama':TOKO[s.toko], laporan='';
+    var nama2=s.menu===3?'Marketplace Perabot Mama':TOKO[s.toko], laporan='';
     if(image&&image.length>0){
       await kirimWA(sender,'Foto diterima, sedang diproses...');
       try {
-        var pr=s.menu===1?'Baca data penjualan toko "'+nama+'" tanggal '+tgl(s.kemarin)+'. Buat laporan lengkap WhatsApp dengan emoji, kassa, total, metode bayar, jenis penjualan. Format rupiah Rp X.XXX.XXX.':s.menu===2?'Baca data harga barang toko "'+nama+'" tanggal '+tgl(s.kemarin)+'. Buat laporan WhatsApp dengan sapaan sesuai jam, barang baru/naik/turun harga.':'Baca data marketplace tanggal '+tgl(s.kemarin)+'. Buat laporan WhatsApp per toko, channel, metode bayar.';
-        laporan=await gemini(image,pr);
+        var pr2=s.menu===1?'Baca data penjualan toko "'+nama2+'" tanggal '+tgl(s.kemarin)+'. Buat laporan lengkap WhatsApp dengan emoji, kassa, total, metode bayar, jenis penjualan. Format rupiah Rp X.XXX.XXX.':s.menu===2?'Baca data harga barang toko "'+nama2+'" tanggal '+tgl(s.kemarin)+'. Buat laporan WhatsApp dengan sapaan sesuai jam, barang baru/naik/turun harga.':'Baca data marketplace tanggal '+tgl(s.kemarin)+'. Buat laporan WhatsApp per toko, channel, metode bayar.';
+        laporan=await gemini(image,pr2);
       } catch(e){console.error('Gemini:',e.message);await kirimWA(sender,'Gagal baca foto. Coba ketik manual.');return;}
     } else if(msg){
-      if(s.menu===1) laporan=lPenjualan(msg,nama,s.kemarin);
-      if(s.menu===2) laporan=lHarga(msg,nama,s.kemarin);
+      if(s.menu===1) laporan=lPenjualan(msg,nama2,s.kemarin);
+      if(s.menu===2) laporan=lHarga(msg,nama2,s.kemarin);
       if(s.menu===3) laporan=lMarket(msg,s.kemarin);
     } else return;
 
