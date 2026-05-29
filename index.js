@@ -339,9 +339,26 @@ app.post('/webhook', async function(req,res){
       }
     }
 
-    // ── CEK AKSES ──
-    if((low.startsWith('cari ')||low.startsWith('stok '))&&!isMember(sender)){
-      await kirimWA(sender,'\ud83d\udeab *Akses Ditolak*\n\nFitur ini hanya untuk member terdaftar.\n\nHubungi admin untuk mendaftarkan nomor kamu.');
+    // ── DETEKSI SAPAAN (kapan saja, awal/tengah/akhir chat) ──
+    var kataKataAwal = low.split(/[\s,!?.]+/)[0];
+    var KATA_SAPAAN = [
+      'halo','hai','hi','hello','hey','hei','holla','ola',
+      'selamat','pagi','siang','sore','malam','met',
+      'assalamu','assalamualaikum','waalaikumsalam','waalaikum',
+      'permisi','maaf','excuse','hei','howdy','yo','sup'
+    ];
+    var isSapaan = KATA_SAPAAN.some(function(k) {
+      return low === k || low.startsWith(k + ' ') || low.startsWith(k + ',') || low.startsWith(k + '!');
+    });
+
+    if (isSapaan) {
+      var jam2 = new Date(Date.now() + 8*3600000).getUTCHours();
+      var waktu2 = jam2>=5&&jam2<11?'Pagi':jam2>=11&&jam2<15?'Siang':jam2>=15&&jam2<19?'Sore':'Malam';
+      var nama2 = getNama(sender);
+      var balasanSapaan = nama2
+        ? 'Selamat ' + waktu2 + ' juga, *' + nama2 + '*! \ud83d\ude0a\n\nAda yang bisa saya bantu?\nKirim *menu* untuk melihat pilihan.'
+        : 'Selamat ' + waktu2 + ' juga! \ud83d\ude0a\n\nAda yang bisa saya bantu?\nKirim *menu* untuk melihat pilihan.';
+      await kirimWA(sender, balasanSapaan);
       return;
     }
 
